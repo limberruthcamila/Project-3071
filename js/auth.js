@@ -1,84 +1,91 @@
-/* ============================================
-   Authentication Module
-   ============================================ */
+// ===== Autenticación =====
+import { auth, db, googleProvider } from "./firebase-config.js";
+import {
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signInWithPopup,
+  signInAnonymously,
+  signOut,
+  updateProfile,
+  sendEmailVerification,
+} from "https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js";
+import {
+  doc, getDoc, setDoc,
+} from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
 
-// Check authentication state on every protected page
-function checkAuth(callback) {
-  auth.onAuthStateChanged(async (user) => {
+// Verificar sesión en páginas protegidas
+export function requireAuth(callback) {
+  onAuthStateChanged(auth, async (user) => {
     if (!user) {
       window.location.href = "index.html";
       return;
     }
-    // Load user data from Firestore
-    try {
-      const doc = await db.collection("usuarios").doc(user.uid).get();
-      let userData;
-      if (doc.exists) {
-        userData = doc.data();
-      } else {
-        // Create user document if doesn't exist
-        userData = {
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName || "Usuario",
-          role: "comprador",
-          isAnonymous: user.isAnonymous
-        };
-        await db.collection("usuarios").doc(user.uid).set(userData);
-      }
-      if (callback) callback(user, userData);
-    } catch (e) {
-      console.error("Error loading user data:", e);
-      if (callback) callback(user, null);
-    }
+    const userData = await getUserData(user);
+    if (callback) callback(user, userData);
   });
 }
 
-// Login with email and password
-async function loginWithEmail(email, password) {
-  return auth.signInWithEmailAndPassword(email, password);
+// Obtener datos del usuario desde Firestore
+export async function getUserData(user) {
+  const ref = doc(db, "usuarios", user.uid);
+  const snap = await getDoc(ref);
+  if (snap.exists()) return snap.data();
+  // Crear si no existe
+  const data = {
+    uid: user.uid,
+    email: user.email,
+    displayName: user.displayName || "Usuario",
+    role: "comprador",
+    isAnonymous: user.isAnonymous,
+  };
+  await setDoc(ref, data);
+  return data;
 }
 
-// Register with email and password
-async function registerWithEmail(email, password, name, role) {
-  const cred = await auth.createUserWithEmailAndPassword(email, password);
-  const userData = {
+// Login con email
+export async function loginWithEmail(email, password) {
+  return signInWithEmailAndPassword(auth, email, password);
+}
+
+// Registrar con email
+export async function registerWithEmail(email, password, name, role) {
+  const cred = await createUserWithEmailAndPassword(auth, email, password);
+  await updateProfile(cred.user, { displayName: name });
+  const data = {
     uid: cred.user.uid,
-    email: email,
+    email: cred.user.email,
     displayName: name,
-    role: role,
-    isAnonymous: false
+    role: role || "comprador",
+    isAnonymous: false,
   };
-  await db.collection("usuarios").doc(cred.user.uid).set(userData);
+  await setDoc(doc(db, "usuarios", cred.user.uid), data);
+  try { await sendEmailVerification(cred.user); } catch (e) { console.warn("No se pudo enviar verificación:", e); }
   return cred;
 }
 
-// Login with Google
-async function loginWithGoogle() {
-  return auth.signInWithRedirect(googleProvider);
+// Login con Google
+export async function loginWithGoogle() {
+  try {
+    return await signInWithPopup(auth, googleProvider);
+  } catch (err) {
+    if (err?.code === "auth/popup-blocked" || err?.code === "auth/unauthorized-domain") {
+      const { signInWithRedirect } = await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js");
+      return signInWithRedirect(auth, googleProvider);
+    }
+    throw err;
+  }
 }
 
-// Login as guest
-async function loginAsGuest() {
-  return auth.signInAnonymously();
+// Login como invitado
+export async function loginAsGuest() {
+  return signInAnonymously(auth);
 }
 
-// Logout
-async function logout() {
-  await auth.signOut();
+// Cerrar sesión
+export async function logout() {
+  await signOut(auth);
   window.location.href = "index.html";
 }
 
-// Get Firebase auth error message in Spanish
-function getAuthError(code) {
-  const errors = {
-    "auth/user-not-found": "Usuario no encontrado",
-    "auth/wrong-password": "Contraseña incorrecta",
-    "auth/email-already-in-use": "El email ya está registrado",
-    "auth/invalid-email": "Email inválido",
-    "auth/weak-password": "La contraseña debe tener al menos 6 caracteres",
-    "auth/too-many-requests": "Demasiados intentos. Intenta más tarde",
-    "auth/invalid-credential": "Credenciales inválidas"
-  };
-  return errors[code] || "Error de autenticación";
-}
+export { onAuthStateChanged, auth };
