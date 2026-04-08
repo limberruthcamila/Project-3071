@@ -2,13 +2,13 @@
 // ===== FIREBASE CONFIG =====
 // IMPORTANTE: Reemplaza con tu configuración de Firebase
 const firebaseConfig = {
-  apiKey: "AIzaSyBG_DjQQfroIKY3Fta2PgsfE9ArRYfqrh0",
-  authDomain: "project-3081-limber.firebaseapp.com",
-  projectId: "project-3081-limber",
-  storageBucket: "project-3081-limber.firebasestorage.app",
-  messagingSenderId: "174564084979",
-  appId: "1:174564084979:web:d141d7ee968595f1d4bb86",
-  measurementId: "G-K99Q5PX8W2"
+  apiKey: "TU_API_KEY",
+  authDomain: "TU_PROYECTO.firebaseapp.com",
+  databaseURL: "https://TU_PROYECTO-default-rtdb.firebaseio.com",
+  projectId: "TU_PROYECTO",
+  storageBucket: "TU_PROYECTO.appspot.com",
+  messagingSenderId: "123456789",
+  appId: "TU_APP_ID"
 };
 
 firebase.initializeApp(firebaseConfig);
@@ -30,7 +30,18 @@ auth.onAuthStateChanged(user => {
     if (isAppPage) {
       initApp();
     } else {
-      window.location.href = 'app.html';
+      // En index: verificar si es admin antes de redirigir
+      db.ref('privado/' + user.uid).once('value').then(snap => {
+        const datos = snap.val();
+        if (datos && datos.email === user.email) {
+          // Es admin: mostrar botón flotante brevemente
+          const btn = document.getElementById('adminFloatBtn');
+          if (btn) btn.style.display = 'block';
+        }
+        window.location.href = 'app.html';
+      }).catch(() => {
+        window.location.href = 'app.html';
+      });
     }
   } else {
     currentUser = null;
@@ -146,6 +157,7 @@ function activateCode() {
 function initApp() {
   setCurrentDate();
   loadUserProfile();
+  checkIfAdmin();
   showModule('dashboard');
 }
 
@@ -155,6 +167,25 @@ function setCurrentDate() {
     const opts = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
     el.textContent = new Date().toLocaleDateString('es-ES', opts);
   }
+}
+
+function checkIfAdmin() {
+  db.ref('privado/' + currentUser.uid).once('value').then(snap => {
+    const datos = snap.val();
+    if (datos && datos.email === currentUser.email) {
+      // Mostrar botón de admin en el sidebar
+      const footer = document.querySelector('.sidebar-footer');
+      if (footer && !document.getElementById('adminBtn')) {
+        const btn = document.createElement('button');
+        btn.id = 'adminBtn';
+        btn.className = 'nav-item';
+        btn.style.cssText = 'color:#f59e0b;margin-bottom:6px;';
+        btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> Panel Admin`;
+        btn.onclick = () => window.location.href = 'admin.html';
+        footer.insertBefore(btn, footer.firstChild);
+      }
+    }
+  });
 }
 
 function loadUserProfile() {
